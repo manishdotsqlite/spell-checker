@@ -2,7 +2,7 @@ use std::{fs::{self, File}, io::{BufRead, BufReader}};
 use sqlx::{sqlite};
 
 /// MAXIMUM BIT SIZE OF BIT MAP
-const BIT_SIZE: usize = 60000;
+const BIT_SIZE: usize = 200000;
 
 
 /// Bloom Filter Struct that maps 3 bits off of a hashed word. 
@@ -38,16 +38,10 @@ impl Bloom_Filter {
         }
 
         fn hash_word(word: &str) -> i32 {
-                fn hash_function_1(x: &str) -> i32 {
-                        let base: i32 = 31;
-                        let mod_val: i32 = 60000;
+                let base: i32 = 31;
+                let mod_val: i32 = 200000;
 
-                        x.bytes().fold(0, |hash, byte| (hash * base + byte as i32) % mod_val)
-                }
-
-                let hash_1 = hash_function_1(word);
-
-                hash_1
+                word.bytes().fold(0, |hash, byte| (hash * base + byte as i32) % mod_val)
 
         }
 
@@ -56,11 +50,7 @@ impl Bloom_Filter {
                 let hash_position: i32 = Self::hash_word(word);
                 let test_1 = self.bit_map[hash_position as usize] == '1' as u8;
 
-                if test_1 {
-                        true
-                } else {
-                        false
-                }
+                test_1
 
         }
 
@@ -117,7 +107,7 @@ impl Bloom_Filter {
         }
 
 
-        pub async fn check_file(&mut self, filename: &str) -> Result<(), &'static str> {
+        pub async fn check_file_bf(&mut self, filename: &str) -> Result<(), &'static str> {
                 let file = match File::open(filename) {
                         Ok(s) => s,
                         Err(_) => return Err("Couldn't read file.")
@@ -128,24 +118,44 @@ impl Bloom_Filter {
                 for (index, line) in reader.lines().enumerate() {
                         match line {
                                 Ok(line) => {
-                                        let words = line.split_whitespace();
+                                        let words = line.split_whitespace().map(|word| word.chars().filter(|c| c.is_alphanumeric()).collect::<String>()).collect::<Vec<String>>();
                                         for word in words {
-                                                let word = word.trim_matches(|c: char| !c.is_alphanumeric());
-                                                println!("Checking word: '{}'", word);
-                                                let word_in_bloom = Self::check_bloom_for_spelling(self, word);
-                                                if !word_in_bloom {
-                                                        println!("Spelling error: '{}' at line {}.", word, index + 1);
-                                                } else {
-                                                        let db_check = Self::check_db_for_spelling(word).await;
-                                                        match db_check {
-                                                                Ok(exists) => {
-                                                                        if !exists {
-                                                                                println!("Spelling error: '{}' at line {}.", word, index + 1);
-                                                                        }
-                                                                },
-                                                                Err(e) => println!("Error checking database for '{}': {}", word, e),
-                                                        }
+                                                let word = word.to_lowercase();
+                                                let is_in_bloom = self.check_bloom_for_spelling(&word);
+                                                if !is_in_bloom {
+                                                        println!("Spelling error: '{}' in line {}", word, index + 1);
                                                 }
+
+                                        }
+                                },
+                                Err(_) => ()
+                        }
+                }
+                Ok(())
+        }
+
+        pub async fn check_file_db(&self, filename: &str) -> Result<(), &'static str> {
+                let file = match File::open(filename) {
+                        Ok(s) => s,
+                        Err(_) => return Err("Couldn't read file.")
+                };
+
+                let reader = BufReader::new(file);
+
+                for (index, line) in reader.lines().enumerate() {
+                        match line {
+                                Ok(line) => {
+                                        let words = line.split_whitespace().map(|word| word.chars().filter(|c| c.is_alphanumeric()).collect::<String>()).collect::<Vec<String>>();
+                                        for word in words {
+                                                let word = word.to_lowercase();
+                                                match Self::check_db_for_spelling(&word).await {
+                                                       Ok(is_in_db) => {
+                                                                if !is_in_db {
+                                                                        println!("Spelling error: '{}' in line {}", word, index + 1);
+                                                                }
+                                                        },
+                                                        Err(_) => ()
+                                                };
                                         }
                                 },
                                 Err(_) => ()

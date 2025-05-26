@@ -1,8 +1,9 @@
 [package]
-name = "spell-checker-crate"
+name = "spellcheck"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.38", features = ["derive"] }
 sqlx = {version="0.8.6", features=["sqlite", "runtime-tokio"]}
 tokio = { version = "1.45.1", features = ["full"] }
